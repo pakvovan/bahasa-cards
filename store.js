@@ -335,6 +335,35 @@ const Store = (() => {
       return JSON.stringify(words, null, 2);
     },
 
+    // Импорт слов из уроков в личную базу (без дублей по indo)
+    async importLessons() {
+      const lessons = window.LESSON_WORDS || [];
+      if (!lessons.length) return { added: 0, skipped: 0 };
+      const have = new Set(words.map((w) => w.indo.toLowerCase()));
+      const seen = new Set();
+      const fresh = [];
+      lessons.forEach((w) => {
+        const k = w.indo.toLowerCase();
+        if (have.has(k) || seen.has(k)) return;
+        seen.add(k);
+        fresh.push({
+          user_id: user.id,
+          indo: w.indo,
+          rus: w.rus,
+          cat: w.cat,
+          status: "learning",
+          added: true,
+        });
+      });
+      if (!fresh.length) return { added: 0, skipped: lessons.length };
+      const { data, error } = await sb.from("words").insert(fresh).select();
+      if (error) return { added: 0, error: error.message };
+      const added = (data || []).map(rowToWord);
+      words = added.concat(words);
+      notifyWords();
+      return { added: added.length, skipped: lessons.length - added.length };
+    },
+
     // ====== ГОТОВАЯ БАЗА ======
     dictLoaded() {
       return dictProgress !== null;

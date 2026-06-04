@@ -602,6 +602,15 @@
         </div>
         <div class="form-msg" id="msg"></div>
         <button class="btn btn-primary btn-block" id="save">Добавить карточку</button>
+      </div>
+
+      <div class="import-box">
+        <div class="import-title">📘 Слова из 4 уроков</div>
+        <div class="import-sub">Готовый набор лексики из уроков (${
+          (window.LESSON_WORDS || []).length
+        } слов) — добавить в мою базу. Дубликаты пропускаются.</div>
+        <button class="btn btn-ghost btn-block" id="importLessons">Загрузить уроки в мою базу</button>
+        <div class="form-msg" id="imsg"></div>
       </div>`;
 
     const indo = document.getElementById("f-indo");
@@ -639,6 +648,29 @@
         if (e.key === "Enter") save();
       })
     );
+
+    const imp = document.getElementById("importLessons");
+    const imsg = document.getElementById("imsg");
+    imp.addEventListener("click", async () => {
+      imp.disabled = true;
+      imsg.className = "form-msg";
+      imsg.textContent = "Загружаю слова из уроков…";
+      const res = await Store.importLessons();
+      imp.disabled = false;
+      if (res.error) {
+        imsg.className = "form-msg err";
+        imsg.textContent = "Ошибка: " + res.error;
+        return;
+      }
+      imsg.className = "form-msg ok";
+      imsg.textContent =
+        res.added > 0
+          ? `Добавлено ${res.added} слов из уроков` +
+            (res.skipped ? ` (пропущено дубликатов: ${res.skipped})` : "")
+          : "Все слова из уроков уже есть в твоей базе";
+      renderStats();
+    });
+
     indo.focus();
   }
 

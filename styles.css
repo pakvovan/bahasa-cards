@@ -436,6 +436,16 @@ main { flex: 1; padding: 18px 16px 40px; }
 .form-msg.err { color: var(--red); }
 .form-msg.ok { color: var(--known); }
 
+.import-box {
+  margin-top: 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+.import-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.import-sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; line-height: 1.4; }
+
 datalist { color: #000; }
 
 .footer-actions {
