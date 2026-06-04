@@ -37,7 +37,7 @@ html, body {
 header {
   background: linear-gradient(135deg, var(--red), var(--red-dark));
   color: #fff;
-  padding: 18px 20px 16px;
+  padding: calc(18px + env(safe-area-inset-top)) 20px 16px;
   position: sticky;
   top: 0;
   z-index: 10;
