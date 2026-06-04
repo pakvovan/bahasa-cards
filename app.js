@@ -147,10 +147,12 @@
     let pool = ui.deck === "due" ? curDue() : curByStatus(ui.deck);
     if (ui.studyCat !== "all") pool = pool.filter((w) => w.cat === ui.studyCat);
     ui.queue = pool.map((w) => w.id);
-    // лёгкое перемешивание
-    for (let i = ui.queue.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [ui.queue[i], ui.queue[j]] = [ui.queue[j], ui.queue[i]];
+    // выбрана конкретная тема — идём ПО ПОРЯДКУ; «Все темы» — перемешиваем
+    if (ui.studyCat === "all") {
+      for (let i = ui.queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ui.queue[i], ui.queue[j]] = [ui.queue[j], ui.queue[i]];
+      }
     }
     ui.qIndex = 0;
     ui.flipped = false;
