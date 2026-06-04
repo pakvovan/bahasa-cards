@@ -583,6 +583,18 @@ datalist { color: #000; }
   text-decoration: underline; cursor: pointer; font-size: 13px;
 }
 
+/* Описание для поисковиков (видимый футер под приложением) */
+.seo-text {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 22px 18px 40px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.seo-text h2 { font-size: 16px; color: var(--text); margin-bottom: 8px; }
+.seo-text p { margin-bottom: 10px; }
+
 /* Плавающая кнопка «Добавить слово» */
 #fab {
   position: fixed;
