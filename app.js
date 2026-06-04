@@ -693,16 +693,67 @@
     const bar = document.getElementById("userbar");
     const u = Store.currentUser();
     if (u) {
-      bar.innerHTML = `<button class="logout-btn" id="logout" title="${esc(
-        u.email || ""
-      )}">Выйти</button>`;
+      bar.innerHTML = `
+        <button class="userbar-btn" id="feedback" title="Обратная связь">✉️ Отзыв</button>
+        <button class="logout-btn" id="logout" title="${esc(
+          u.email || ""
+        )}">Выйти</button>`;
       document.getElementById("logout").addEventListener("click", async () => {
         await Store.signOut();
         renderShell();
       });
+      document
+        .getElementById("feedback")
+        .addEventListener("click", openFeedback);
     } else {
       bar.innerHTML = "";
     }
+  }
+
+  // ---------- Обратная связь (модальное окно) ----------
+  function openFeedback() {
+    const old = document.getElementById("fbOverlay");
+    if (old) old.remove();
+    const ov = document.createElement("div");
+    ov.id = "fbOverlay";
+    ov.className = "modal-overlay";
+    ov.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>Обратная связь</h3>
+        <p class="modal-lead">Нашёл ошибку в переводе, есть идея или вопрос — напиши, я прочитаю.</p>
+        <textarea id="fbText" rows="5" placeholder="Твоё сообщение…"></textarea>
+        <div class="form-msg" id="fbMsg"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="fbCancel">Отмена</button>
+          <button class="btn btn-primary" id="fbSend">Отправить</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov) close();
+    });
+    document.getElementById("fbCancel").addEventListener("click", close);
+    const text = document.getElementById("fbText");
+    const msg = document.getElementById("fbMsg");
+    const send = document.getElementById("fbSend");
+    text.focus();
+    send.addEventListener("click", async () => {
+      send.disabled = true;
+      msg.className = "form-msg";
+      msg.textContent = "Отправляю…";
+      const res = await Store.sendFeedback(text.value);
+      if (!res.ok) {
+        send.disabled = false;
+        msg.className = "form-msg err";
+        msg.textContent = res.error;
+        return;
+      }
+      msg.className = "form-msg ok";
+      msg.textContent = "Спасибо! Сообщение отправлено.";
+      text.value = "";
+      setTimeout(close, 1200);
+    });
   }
 
   function renderAuth() {

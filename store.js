@@ -335,6 +335,22 @@ const Store = (() => {
       return JSON.stringify(words, null, 2);
     },
 
+    // Обратная связь
+    async sendFeedback(message) {
+      message = (message || "").trim();
+      if (!message) return { ok: false, error: "Напиши сообщение" };
+      if (message.length > 4000)
+        return { ok: false, error: "Слишком длинно (макс. 4000 символов)" };
+      const row = {
+        user_id: user ? user.id : null,
+        email: user ? user.email : null,
+        message,
+      };
+      const { error } = await sb.from("feedback").insert(row);
+      if (error) return { ok: false, error: error.message };
+      return { ok: true };
+    },
+
     // Импорт слов из уроков в личную базу (без дублей по indo)
     async importLessons() {
       const lessons = window.LESSON_WORDS || [];
