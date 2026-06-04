@@ -645,6 +645,31 @@
     indo.focus();
   }
 
+  // ---------- Приветствие при первом заходе ----------
+  function setupWelcome() {
+    if (localStorage.getItem("bahasa_welcome") === "1") return;
+    const ov = document.createElement("div");
+    ov.id = "welcomeOverlay";
+    ov.className = "modal-overlay";
+    ov.innerHTML = `
+      <div class="modal welcome-modal" role="dialog" aria-modal="true">
+        <div class="welcome-emoji">🇮🇩</div>
+        <h3>Bahasa · Карточки</h3>
+        <p class="modal-lead">Учим индонезийский по карточкам.</p>
+        <ul class="welcome-list">
+          <li><span>📱</span><div><b>Можно установить на телефон</b> — иконкой на экране, как обычное приложение.</div></li>
+          <li><span>📶</span><div><b>Работает офлайн</b> — приложение и слова сохраняются в памяти телефона, учиться можно без интернета.</div></li>
+          <li><span>🔄</span><div>Отметки и прогресс <b>синхронизируются</b>, когда интернет возвращается.</div></li>
+        </ul>
+        <button class="btn btn-primary btn-block" id="welcomeOk">Принимаю</button>
+      </div>`;
+    document.body.appendChild(ov);
+    document.getElementById("welcomeOk").addEventListener("click", () => {
+      localStorage.setItem("bahasa_welcome", "1");
+      ov.remove();
+    });
+  }
+
   // ---------- Подсказка «Установить приложение» ----------
   function setupInstallBanner() {
     const standalone =
@@ -999,6 +1024,7 @@
   Store.onAuth((u) => {
     if (!u) renderShell();
   });
+  setupWelcome();
   setupInstallBanner();
   // когда интернет вернулся — досинхронизировать офлайн-изменения и обновить экран
   window.addEventListener("online", async () => {
