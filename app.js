@@ -662,7 +662,15 @@
     const bar = document.getElementById("userbar");
     const u = Store.currentUser();
     if (u) {
+      const D = window.DONATE;
+      const donateOn =
+        D && (D.url || (D.crypto && D.crypto.address));
       bar.innerHTML = `
+        ${
+          donateOn
+            ? `<button class="userbar-btn donate-btn" id="donate" title="Поддержать проект">💛 Донат</button>`
+            : ""
+        }
         <button class="userbar-btn" id="feedback" title="Обратная связь">✉️ Отзыв</button>
         <button class="logout-btn" id="logout" title="${esc(
           u.email || ""
@@ -674,9 +682,76 @@
       document
         .getElementById("feedback")
         .addEventListener("click", openFeedback);
+      const dn = document.getElementById("donate");
+      if (dn) dn.addEventListener("click", openDonate);
     } else {
       bar.innerHTML = "";
     }
+  }
+
+  // ---------- Донат (модальное окно) ----------
+  function openDonate() {
+    const cfg = window.DONATE || {};
+    const cr = cfg.crypto && cfg.crypto.address ? cfg.crypto : null;
+    if (!cfg.url && !cr) return;
+    const old = document.getElementById("dnOverlay");
+    if (old) old.remove();
+
+    const linkBlock = cfg.url
+      ? `<a class="btn btn-primary btn-block" href="${esc(
+          cfg.url
+        )}" target="_blank" rel="noopener">Перейти к оплате →</a>`
+      : "";
+
+    const cryptoBlock = cr
+      ? `<div class="crypto-box">
+           <div class="crypto-net">${esc(cr.coin || "")} · ${esc(
+          cr.network || ""
+        )}</div>
+           <img class="crypto-qr" alt="QR" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=${encodeURIComponent(
+             cr.address
+           )}">
+           <div class="crypto-addr" id="dnAddr">${esc(cr.address)}</div>
+           <button class="btn btn-ghost btn-block" id="dnCopy">📋 Скопировать адрес</button>
+         </div>`
+      : "";
+
+    const ov = document.createElement("div");
+    ov.id = "dnOverlay";
+    ov.className = "modal-overlay";
+    ov.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <h3>Поддержать проект 💛</h3>
+        <p class="modal-lead">${esc(cfg.note || "Спасибо за поддержку!")}</p>
+        ${linkBlock}
+        ${cryptoBlock}
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="dnClose">Закрыть</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov) close();
+    });
+    document.getElementById("dnClose").addEventListener("click", close);
+
+    const copy = document.getElementById("dnCopy");
+    if (copy)
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(cr.address);
+          copy.textContent = "✓ Скопировано";
+        } catch (e) {
+          // запасной способ — выделить адрес
+          const r = document.createRange();
+          r.selectNodeContents(document.getElementById("dnAddr"));
+          const s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(r);
+          copy.textContent = "Выдели и скопируй ⤴";
+        }
+      });
   }
 
   // ---------- Обратная связь (модальное окно) ----------
