@@ -658,7 +658,7 @@
         <p class="modal-lead">Учим индонезийский по карточкам.</p>
         <ul class="welcome-list">
           <li><span>📱</span><div><b>Можно установить на телефон</b> — иконкой на экране, как обычное приложение.</div></li>
-          <li><span>📶</span><div><b>Работает офлайн</b> — приложение и слова сохраняются в памяти телефона, учиться можно без интернета.</div></li>
+          <li><span>📶</span><div><b>Работает офлайн</b> — приложение и слова сохраняются в памяти телефона, учиться можно без интернета. Если открыл без сети и база не появилась сразу — подожди пару секунд.</div></li>
           <li><span>🔄</span><div>Отметки и прогресс <b>синхронизируются</b>, когда интернет возвращается.</div></li>
         </ul>
         <button class="btn btn-primary btn-block" id="welcomeOk">Принимаю</button>
@@ -1035,6 +1035,13 @@
       startDeck();
       renderStudy();
     } else if (ui.tab === "list") renderList();
+  });
+
+  // фоновая синхронизация обновила данные — освежить счётчики (не трогая текущий экран)
+  Store.subscribe(() => {
+    if (Store.currentUser() && !document.body.classList.contains("auth-mode")) {
+      renderStats();
+    }
   });
 
   (async () => {

@@ -148,21 +148,24 @@ const Store = (() => {
     return m;
   }
 
-  async function loadWords() {
-    const { data, error } = await sb
-      .from("words")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) {
-      // офлайн / ошибка — берём последнюю сохранённую копию
-      const cached = readCache("words");
-      words = Array.isArray(cached) ? cached : [];
-      notifyWords();
-      return;
-    }
-    words = (data || []).map(rowToWord);
-    persistWords();
+  // мгновенно показать слова из кеша (для офлайна — без ожидания сети)
+  function applyCachedWords() {
+    const cached = readCache("words");
+    words = Array.isArray(cached) ? cached : [];
     notifyWords();
+  }
+  // обновить слова с сервера; офлайн/ошибка — молча оставить кеш
+  async function refreshWords() {
+    try {
+      const { data, error } = await sb
+        .from("words")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) return;
+      words = (data || []).map(rowToWord);
+      persistWords();
+      notifyWords();
+    } catch (e) {}
   }
 
   function upsertDict(id, p) {
@@ -188,9 +191,17 @@ const Store = (() => {
 
     async init() {
       if (!configured()) return { configured: false };
+      // fetch с таймаутом — чтобы офлайн-запросы не «висели» по 10+ секунд
+      const tfetch = (input, opts) => {
+        const ctrl = new AbortController();
+        const id = setTimeout(() => ctrl.abort(), 6000);
+        return fetch(input, Object.assign({}, opts, { signal: ctrl.signal }))
+          .finally(() => clearTimeout(id));
+      };
       sb = window.supabase.createClient(
         window.SUPABASE_CONFIG.url,
-        window.SUPABASE_CONFIG.anonKey
+        window.SUPABASE_CONFIG.anonKey,
+        { global: { fetch: tfetch } }
       );
       const {
         data: { session },
@@ -207,8 +218,9 @@ const Store = (() => {
         }
       });
       if (user) {
-        await flushPending(); // досинхронизировать офлайн-изменения
-        await loadWords();
+        applyCachedWords(); // мгновенно из кеша
+        // сеть — в фоне, не блокируем открытие
+        flushPending().then(refreshWords).catch(() => {});
       }
       return { configured: true, user };
     },
@@ -225,8 +237,8 @@ const Store = (() => {
     async syncNow() {
       if (!user) return;
       await flushPending();
-      await loadWords();
-      if (dictProgress !== null) await this.dictLoad();
+      await refreshWords();
+      if (dictProgress !== null) await this.dictRefresh();
     },
 
     async signUp(email, password) {
@@ -234,8 +246,9 @@ const Store = (() => {
       if (error) return { ok: false, error: translateAuthError(error) };
       if (data.session) {
         user = data.user;
+        applyCachedWords();
         await flushPending();
-        await loadWords();
+        await refreshWords();
         return { ok: true };
       }
       return { ok: true, needConfirm: true };
@@ -248,8 +261,9 @@ const Store = (() => {
       });
       if (error) return { ok: false, error: translateAuthError(error) };
       user = data.user;
+      applyCachedWords();
       await flushPending();
-      await loadWords();
+      await refreshWords();
       return { ok: true };
     },
 
@@ -403,25 +417,32 @@ const Store = (() => {
       return dictProgress !== null;
     },
     async dictLoad() {
-      const { data, error } = await sb.from("dict_progress").select("*");
-      if (error) {
-        const cached = readCache("dictprog");
-        dictProgress = cached && typeof cached === "object" ? cached : {};
-        notifyWords();
-        return;
-      }
-      dictProgress = {};
-      (data || []).forEach((r) => {
-        dictProgress[r.dict_id] = {
-          status: r.status || "learning",
-          streak: r.streak || 0,
-          due: r.due || null,
-          indo: r.indo || null,
-          rus: r.rus || null,
-        };
-      });
-      persistDict();
+      // мгновенно из кеша, сеть — в фоне (офлайн не ждёт таймаута)
+      const cached = readCache("dictprog");
+      dictProgress = cached && typeof cached === "object" ? cached : {};
       notifyWords();
+      this.dictRefresh();
+    },
+    dictRefresh() {
+      return sb
+        .from("dict_progress")
+        .select("*")
+        .then(({ data, error }) => {
+          if (error) return;
+          dictProgress = {};
+          (data || []).forEach((r) => {
+            dictProgress[r.dict_id] = {
+              status: r.status || "learning",
+              streak: r.streak || 0,
+              due: r.due || null,
+              indo: r.indo || null,
+              rus: r.rus || null,
+            };
+          });
+          persistDict();
+          notifyWords();
+        })
+        .catch(() => {});
     },
     dictAll() {
       const dict = window.DICTIONARY || [];
