@@ -6,16 +6,31 @@
   <title>Bahasa · Карточки слов</title>
 
   <!-- PWA: установка на домашний экран -->
-  <link rel="manifest" href="manifest.json?v=7">
+  <link rel="manifest" href="manifest.json?v=8">
   <meta name="theme-color" content="#e8453c">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=7">
-  <link rel="icon" type="image/png" href="favicon-64.png?v=7">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=8">
+  <link rel="icon" type="image/png" href="favicon-64.png?v=8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Bahasa">
 
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
+
+  <script>
+    // раннее перехватывание события установки (Android/Chrome) — чтобы не упустить
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault();
+      window._installEvent = e;
+      window.dispatchEvent(new Event("install-available"));
+    });
+    // регистрация service worker для офлайн-режима
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function () {});
+      });
+    }
+  </script>
 </head>
 <body>
   <div id="app">
@@ -36,9 +51,9 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="config.js?v=7"></script>
-  <script src="data/dictionary.js?v=7"></script>
-  <script src="store.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="config.js?v=8"></script>
+  <script src="data/dictionary.js?v=8"></script>
+  <script src="store.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

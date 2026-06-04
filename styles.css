@@ -258,6 +258,38 @@ main { flex: 1; padding: 18px 16px 40px; }
   margin-bottom: 10px;
 }
 
+/* Баннер «Установить приложение» */
+.install-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  width: calc(100% - 24px);
+  max-width: 516px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 40;
+}
+.install-txt { flex: 1; font-size: 13.5px; line-height: 1.35; }
+.install-go { flex: 0 0 auto; padding: 9px 16px; font-size: 14px; }
+.install-x {
+  flex: 0 0 auto;
+  border: none;
+  background: var(--bg);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
 /* Buttons */
 .btn {
   border: none;

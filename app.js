@@ -645,6 +645,68 @@
     indo.focus();
   }
 
+  // ---------- Подсказка «Установить приложение» ----------
+  function setupInstallBanner() {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    if (standalone) return; // уже установлено
+    if (localStorage.getItem("pwa_hide") === "1") return; // ранее закрыли
+
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    let shown = false;
+
+    function showBar(inner, onInstall) {
+      if (shown || document.getElementById("installBar")) return;
+      shown = true;
+      const bar = document.createElement("div");
+      bar.id = "installBar";
+      bar.className = "install-bar";
+      bar.innerHTML =
+        inner +
+        `<button class="install-x" id="installX" aria-label="Закрыть">✕</button>`;
+      document.body.appendChild(bar);
+      document.getElementById("installX").addEventListener("click", () => {
+        bar.remove();
+        localStorage.setItem("pwa_hide", "1");
+      });
+      const go = document.getElementById("installGo");
+      if (go && onInstall) go.addEventListener("click", () => onInstall(bar));
+    }
+
+    function showAndroid() {
+      showBar(
+        `<span class="install-txt">📲 Установить приложение «Bahasa»</span>
+         <button class="btn btn-primary install-go" id="installGo">Установить</button>`,
+        async (bar) => {
+          const ev = window._installEvent;
+          if (!ev) return;
+          bar.remove();
+          ev.prompt();
+          try {
+            await ev.userChoice;
+          } catch (e) {}
+          localStorage.setItem("pwa_hide", "1");
+          window._installEvent = null;
+        }
+      );
+    }
+
+    if (window._installEvent) showAndroid();
+    window.addEventListener("install-available", showAndroid);
+
+    if (isIOS && !window._installEvent) {
+      // iOS не присылает событие — показываем инструкцию
+      setTimeout(
+        () =>
+          showBar(
+            `<span class="install-txt">📲 Поставь иконку: в Safari нажми <b>Поделиться</b> → <b>«На экран Домой»</b></span>`
+          ),
+        1800
+      );
+    }
+  }
+
   // ---------- Router (приложение, когда вошёл) ----------
   function render() {
     renderBaseSwitch();
@@ -937,6 +999,7 @@
   Store.onAuth((u) => {
     if (!u) renderShell();
   });
+  setupInstallBanner();
 
   (async () => {
     const res = await Store.init();
