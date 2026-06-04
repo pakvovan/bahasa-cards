@@ -98,28 +98,7 @@ const Store = (() => {
       notifyWords();
       return;
     }
-    words = (data || []).map(rowToWord);
-    if (words.length === 0) {
-      await seedForUser();
-    }
-    notifyWords();
-  }
-
-  async function seedForUser() {
-    const seed = (window.SEED_WORDS || []).map((w) => ({
-      user_id: user.id,
-      indo: w.indo,
-      rus: w.rus,
-      cat: w.cat || "Без категории",
-      status: "learning",
-      added: false,
-    }));
-    if (!seed.length) return;
-    const { data, error } = await sb.from("words").insert(seed).select();
-    if (error) {
-      console.error("Ошибка наполнения стартовым набором:", error);
-      return;
-    }
+    // Новые пользователи начинают с пустой личной базы (без стартового набора).
     words = (data || []).map(rowToWord);
     notifyWords();
   }
@@ -321,14 +300,14 @@ const Store = (() => {
         .then(({ error }) => error && console.error("remove:", error));
     },
 
-    async resetAll() {
+    async clearAll() {
       const { error } = await sb.from("words").delete().eq("user_id", user.id);
       if (error) {
-        console.error("resetAll:", error);
+        console.error("clearAll:", error);
         return;
       }
       words = [];
-      await seedForUser();
+      notifyWords();
     },
 
     exportJSON() {
@@ -349,35 +328,6 @@ const Store = (() => {
       const { error } = await sb.from("feedback").insert(row);
       if (error) return { ok: false, error: error.message };
       return { ok: true };
-    },
-
-    // Импорт слов из уроков в личную базу (без дублей по indo)
-    async importLessons() {
-      const lessons = window.LESSON_WORDS || [];
-      if (!lessons.length) return { added: 0, skipped: 0 };
-      const have = new Set(words.map((w) => w.indo.toLowerCase()));
-      const seen = new Set();
-      const fresh = [];
-      lessons.forEach((w) => {
-        const k = w.indo.toLowerCase();
-        if (have.has(k) || seen.has(k)) return;
-        seen.add(k);
-        fresh.push({
-          user_id: user.id,
-          indo: w.indo,
-          rus: w.rus,
-          cat: w.cat,
-          status: "learning",
-          added: true,
-        });
-      });
-      if (!fresh.length) return { added: 0, skipped: lessons.length };
-      const { data, error } = await sb.from("words").insert(fresh).select();
-      if (error) return { added: 0, error: error.message };
-      const added = (data || []).map(rowToWord);
-      words = added.concat(words);
-      notifyWords();
-      return { added: added.length, skipped: lessons.length - added.length };
     },
 
     // ====== ГОТОВАЯ БАЗА ======
