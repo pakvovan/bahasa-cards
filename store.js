@@ -2,9 +2,11 @@
    Две базы:
      • Личная (таблица words) — слова пользователя.
      • Готовая (общий словарь window.DICTIONARY + прогресс в dict_progress).
-   Плюс интервальное повторение: у слова есть due (когда повторить) и streak.
+   Интервальное повторение: у слова есть due (когда повторить) и streak.
 
-   Статусы (корзины): "learning" | "known" | "review".
+   ОФЛАЙН: слова и прогресс кешируются в localStorage (читаются без сети).
+   Изменения, сделанные офлайн, складываются в очередь и синхронизируются,
+   когда сеть возвращается (Store.syncNow / событие online).
 */
 const Store = (() => {
   const STATUS = {
@@ -13,26 +15,25 @@ const Store = (() => {
     review:   { id: "review",   label: "Повторение", color: "#1971c2" },
   };
 
-  let sb = null;      // клиент Supabase
-  let user = null;    // текущий пользователь
-  let words = [];     // кеш ЛИЧНЫХ слов пользователя
-  let dictProgress = null; // прогресс готовой базы: {dict_id: {status,streak,due,indo,rus}}
+  let sb = null;
+  let user = null;
+  let words = [];
+  let dictProgress = null; // {dict_id: {status,streak,due,indo,rus}}
   const wordListeners = new Set();
   const authListeners = new Set();
 
   const DAY = 86400000;
 
-  // --- интервальное повторение: считаем следующую дату по ответу ---
   function nextSchedule(status, prevStreak) {
     let streak = prevStreak || 0;
     let ms;
-    if (status === "learning") {        // «Не знаю» → ещё сегодня
+    if (status === "learning") {
       streak = 0;
       ms = 0;
-    } else if (status === "review") {   // «Повторить» → завтра
+    } else if (status === "review") {
       streak = 0;
       ms = DAY;
-    } else {                            // «Знаю» → растущий интервал 1,2,4,8…60 дней
+    } else {
       streak = streak + 1;
       ms = Math.min(60, Math.pow(2, streak - 1)) * DAY;
     }
@@ -42,7 +43,65 @@ const Store = (() => {
     return !!due && new Date(due).getTime() <= Date.now();
   }
 
-  // --- конфигурация ---
+  // ---- локальный кеш (для офлайна), ключи привязаны к пользователю ----
+  function ck(k) {
+    return "bahasa_cache_" + (user ? user.id : "anon") + "_" + k;
+  }
+  function readCache(k) {
+    try {
+      return JSON.parse(localStorage.getItem(ck(k)));
+    } catch (e) {
+      return null;
+    }
+  }
+  function writeCache(k, v) {
+    try {
+      localStorage.setItem(ck(k), JSON.stringify(v));
+    } catch (e) {}
+  }
+  const persistWords = () => writeCache("words", words);
+  const persistDict = () => writeCache("dictprog", dictProgress || {});
+
+  // ---- очередь офлайн-изменений ----
+  function enqueue(op) {
+    const q = readCache("pending") || [];
+    q.push(op);
+    writeCache("pending", q.slice(-1000));
+  }
+  // выполнить запись на сервер; при ошибке (офлайн) — положить в очередь
+  function serverWrite(builder, op) {
+    try {
+      builder
+        .then(({ error }) => {
+          if (error) enqueue(op);
+        })
+        .catch(() => enqueue(op));
+    } catch (e) {
+      enqueue(op);
+    }
+  }
+  async function flushPending() {
+    if (!user) return;
+    const q = readCache("pending");
+    if (!Array.isArray(q) || !q.length) return;
+    const remain = [];
+    for (const op of q) {
+      try {
+        let r;
+        if (op.t === "wU") r = await sb.from("words").update(op.patch).eq("id", op.id);
+        else if (op.t === "wD") r = await sb.from("words").delete().eq("id", op.id);
+        else if (op.t === "dU")
+          r = await sb
+            .from("dict_progress")
+            .upsert(op.row, { onConflict: "user_id,dict_id" });
+        if (r && r.error) remain.push(op);
+      } catch (e) {
+        remain.push(op);
+      }
+    }
+    writeCache("pending", remain);
+  }
+
   function configured() {
     const c = window.SUPABASE_CONFIG;
     return !!(
@@ -84,6 +143,8 @@ const Store = (() => {
     if (/unable to validate email|invalid email/i.test(m))
       return "Похоже, email введён неверно";
     if (/rate limit|too many/i.test(m)) return "Слишком много попыток, подожди немного";
+    if (/failed to fetch|networkerror|load failed/i.test(m))
+      return "Нет связи с сервером — проверь интернет";
     return m;
   }
 
@@ -93,42 +154,31 @@ const Store = (() => {
       .select("*")
       .order("created_at", { ascending: false });
     if (error) {
-      console.error("Ошибка загрузки слов:", error);
-      words = [];
+      // офлайн / ошибка — берём последнюю сохранённую копию
+      const cached = readCache("words");
+      words = Array.isArray(cached) ? cached : [];
       notifyWords();
       return;
     }
-    // Новые пользователи начинают с пустой личной базы (без стартового набора).
     words = (data || []).map(rowToWord);
+    persistWords();
     notifyWords();
   }
 
-  // upsert строки прогресса готовой базы целиком (чтобы не затирать переопределения)
   function upsertDict(id, p) {
-    sb.from("dict_progress")
-      .upsert(
-        {
-          user_id: user.id,
-          dict_id: id,
-          status: p.status || "learning",
-          streak: p.streak || 0,
-          due: p.due || null,
-          indo: p.indo || null,
-          rus: p.rus || null,
-        },
-        { onConflict: "user_id,dict_id" }
-      )
-      .then(({ error }) => {
-        if (error) {
-          // возможно, ещё нет колонок streak/due/indo/rus — сохраним хотя бы статус
-          sb.from("dict_progress")
-            .upsert(
-              { user_id: user.id, dict_id: id, status: p.status || "learning" },
-              { onConflict: "user_id,dict_id" }
-            )
-            .then(({ error: e2 }) => e2 && console.error("dict upsert:", e2));
-        }
-      });
+    const row = {
+      user_id: user.id,
+      dict_id: id,
+      status: p.status || "learning",
+      streak: p.streak || 0,
+      due: p.due || null,
+      indo: p.indo || null,
+      rus: p.rus || null,
+    };
+    serverWrite(
+      sb.from("dict_progress").upsert(row, { onConflict: "user_id,dict_id" }),
+      { t: "dU", id, row }
+    );
   }
 
   return {
@@ -136,7 +186,6 @@ const Store = (() => {
     isDue,
     configured,
 
-    // ---- инициализация ----
     async init() {
       if (!configured()) return { configured: false };
       sb = window.supabase.createClient(
@@ -157,11 +206,13 @@ const Store = (() => {
           notifyAuth();
         }
       });
-      if (user) await loadWords();
+      if (user) {
+        await flushPending(); // досинхронизировать офлайн-изменения
+        await loadWords();
+      }
       return { configured: true, user };
     },
 
-    // ---- аутентификация ----
     currentUser() {
       return user;
     },
@@ -170,11 +221,20 @@ const Store = (() => {
       return () => authListeners.delete(fn);
     },
 
+    // синхронизация при возврате сети
+    async syncNow() {
+      if (!user) return;
+      await flushPending();
+      await loadWords();
+      if (dictProgress !== null) await this.dictLoad();
+    },
+
     async signUp(email, password) {
       const { data, error } = await sb.auth.signUp({ email, password });
       if (error) return { ok: false, error: translateAuthError(error) };
       if (data.session) {
         user = data.user;
+        await flushPending();
         await loadWords();
         return { ok: true };
       }
@@ -188,6 +248,7 @@ const Store = (() => {
       });
       if (error) return { ok: false, error: translateAuthError(error) };
       user = data.user;
+      await flushPending();
       await loadWords();
       return { ok: true };
     },
@@ -246,9 +307,16 @@ const Store = (() => {
         .insert(row)
         .select()
         .single();
-      if (error) return { ok: false, error: "Ошибка сохранения: " + error.message };
+      if (error)
+        return {
+          ok: false,
+          error: /fetch|network/i.test(error.message || "")
+            ? "Добавление новых слов недоступно офлайн"
+            : "Ошибка сохранения: " + error.message,
+        };
       const w = rowToWord(data);
       words.unshift(w);
+      persistWords();
       notifyWords();
       return { ok: true, word: w };
     },
@@ -261,18 +329,13 @@ const Store = (() => {
       w.streak = s.streak;
       w.due = s.due;
       notifyWords();
-      sb.from("words")
-        .update({ status, streak: s.streak, due: s.due })
-        .eq("id", id)
-        .then(({ error }) => {
-          if (error) {
-            // возможно, ещё нет колонок due/streak — сохраним хотя бы статус
-            sb.from("words")
-              .update({ status })
-              .eq("id", id)
-              .then(({ error: e2 }) => e2 && console.error("setStatus:", e2));
-          }
-        });
+      persistWords();
+      const patch = { status, streak: s.streak, due: s.due };
+      serverWrite(sb.from("words").update(patch).eq("id", id), {
+        t: "wU",
+        id,
+        patch,
+      });
     },
 
     update(id, fields) {
@@ -284,30 +347,29 @@ const Store = (() => {
       w.indo = indo;
       w.rus = rus;
       notifyWords();
-      sb.from("words")
-        .update({ indo, rus })
-        .eq("id", id)
-        .then(({ error }) => error && console.error("update:", error));
+      persistWords();
+      const patch = { indo, rus };
+      serverWrite(sb.from("words").update(patch).eq("id", id), {
+        t: "wU",
+        id,
+        patch,
+      });
       return { ok: true };
     },
 
     remove(id) {
       words = words.filter((w) => w.id !== id);
       notifyWords();
-      sb.from("words")
-        .delete()
-        .eq("id", id)
-        .then(({ error }) => error && console.error("remove:", error));
+      persistWords();
+      serverWrite(sb.from("words").delete().eq("id", id), { t: "wD", id });
     },
 
     async clearAll() {
-      const { error } = await sb.from("words").delete().eq("user_id", user.id);
-      if (error) {
-        console.error("clearAll:", error);
-        return;
-      }
       words = [];
+      persistWords();
       notifyWords();
+      const { error } = await sb.from("words").delete().eq("user_id", user.id);
+      if (error) console.error("clearAll:", error);
     },
 
     exportJSON() {
@@ -326,7 +388,13 @@ const Store = (() => {
         message,
       };
       const { error } = await sb.from("feedback").insert(row);
-      if (error) return { ok: false, error: error.message };
+      if (error)
+        return {
+          ok: false,
+          error: /fetch|network/i.test(error.message || "")
+            ? "Нет интернета — попробуй позже"
+            : error.message,
+        };
       return { ok: true };
     },
 
@@ -336,20 +404,23 @@ const Store = (() => {
     },
     async dictLoad() {
       const { data, error } = await sb.from("dict_progress").select("*");
-      dictProgress = {};
       if (error) {
-        console.error("Ошибка загрузки прогресса готовой базы:", error);
-      } else {
-        (data || []).forEach((r) => {
-          dictProgress[r.dict_id] = {
-            status: r.status || "learning",
-            streak: r.streak || 0,
-            due: r.due || null,
-            indo: r.indo || null,
-            rus: r.rus || null,
-          };
-        });
+        const cached = readCache("dictprog");
+        dictProgress = cached && typeof cached === "object" ? cached : {};
+        notifyWords();
+        return;
       }
+      dictProgress = {};
+      (data || []).forEach((r) => {
+        dictProgress[r.dict_id] = {
+          status: r.status || "learning",
+          streak: r.streak || 0,
+          due: r.due || null,
+          indo: r.indo || null,
+          rus: r.rus || null,
+        };
+      });
+      persistDict();
       notifyWords();
     },
     dictAll() {
@@ -398,6 +469,7 @@ const Store = (() => {
       const np = { ...p, status, streak: s.streak, due: s.due };
       dictProgress[id] = np;
       notifyWords();
+      persistDict();
       upsertDict(id, np);
     },
     dictEdit(id, { indo, rus }) {
@@ -407,6 +479,7 @@ const Store = (() => {
       if (rus !== undefined) p.rus = rus.trim() || null;
       dictProgress[id] = p;
       notifyWords();
+      persistDict();
       upsertDict(id, p);
     },
   };

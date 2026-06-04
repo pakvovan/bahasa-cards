@@ -1000,6 +1000,16 @@
     if (!u) renderShell();
   });
   setupInstallBanner();
+  // когда интернет вернулся — досинхронизировать офлайн-изменения и обновить экран
+  window.addEventListener("online", async () => {
+    if (!Store.currentUser()) return;
+    await Store.syncNow();
+    renderStats();
+    if (ui.tab === "study") {
+      startDeck();
+      renderStudy();
+    } else if (ui.tab === "list") renderList();
+  });
 
   (async () => {
     const res = await Store.init();
