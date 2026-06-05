@@ -801,6 +801,7 @@
       const D = window.DONATE;
       const donateOn = D && (D.url || (D.crypto && D.crypto.address));
       bar.innerHTML = `
+        <button class="userbar-btn" id="search-btn" title="${t("ttl_search")}">🔍</button>
         ${
           donateOn
             ? `<button class="userbar-btn donate-btn" id="donate" title="${t("ttl_donate")}">${t("ub_donate")}</button>`
@@ -813,6 +814,7 @@
         renderShell();
       });
       document.getElementById("feedback").addEventListener("click", openFeedback);
+      document.getElementById("search-btn").addEventListener("click", openSearch);
       const dn = document.getElementById("donate");
       if (dn) dn.addEventListener("click", openDonate);
     } else {
@@ -926,6 +928,124 @@
       text.value = "";
       setTimeout(close, 1200);
     });
+  }
+
+  // ---------- Быстрый поиск по обеим базам ----------
+  function combinedCounts() {
+    const a = Store.counts();
+    const d = Store.dictLoaded()
+      ? Store.dictCounts()
+      : { learning: 0, review: 0, known: 0 };
+    return {
+      learning: a.learning + d.learning,
+      review: a.review + d.review,
+      known: a.known + d.known,
+    };
+  }
+
+  async function openSearch() {
+    const old = document.getElementById("searchOverlay");
+    if (old) old.remove();
+    const ov = document.createElement("div");
+    ov.id = "searchOverlay";
+    ov.className = "modal-overlay search-overlay";
+    ov.innerHTML = `
+      <div class="search-modal">
+        <div class="search-head">
+          <input id="searchInput" type="search" placeholder="${t("search_ph")}" autocomplete="off">
+          <button class="mini" id="searchClose" aria-label="${t("close")}">✕</button>
+        </div>
+        <div class="search-counts" id="searchCounts"></div>
+        <div class="search-results" id="searchResults"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    document.getElementById("searchClose").addEventListener("click", close);
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov) close();
+    });
+
+    if (!Store.dictLoaded()) await Store.dictLoad();
+
+    const input = document.getElementById("searchInput");
+    const resultsEl = document.getElementById("searchResults");
+    const countsEl = document.getElementById("searchCounts");
+
+    function renderCounts() {
+      const c = combinedCounts();
+      countsEl.innerHTML =
+        `<span class="sc learning"><i></i>${t("st_learning")}: <b>${c.learning}</b></span>` +
+        `<span class="sc review"><i></i>${t("st_review")}: <b>${c.review}</b></span>` +
+        `<span class="sc known"><i></i>${t("st_known")}: <b>${c.known}</b></span>`;
+    }
+
+    function renderResults() {
+      const q = input.value.toLowerCase().trim();
+      if (!q) {
+        resultsEl.innerHTML = `<div class="list-empty">${t("search_min")}</div>`;
+        return;
+      }
+      const matches = [];
+      const push = (w, base) => {
+        if (w.indo.toLowerCase().includes(q) || w.rus.toLowerCase().includes(q))
+          matches.push({ ...w, base });
+      };
+      Store.all().forEach((w) => push(w, "mine"));
+      Store.dictAll().forEach((w) => push(w, "ready"));
+      const shown = matches.slice(0, 80);
+      if (!shown.length) {
+        resultsEl.innerHTML = `<div class="list-empty">${t("nothingFound")}</div>`;
+        return;
+      }
+      resultsEl.innerHTML = shown
+        .map((w, idx) => {
+          const st = S[w.status];
+          const baseLbl =
+            w.base === "mine" ? t("search_in_mine") : t("search_in_ready");
+          return `
+        <div class="word-row" data-idx="${idx}">
+          <span class="status-dot" style="background:${st.color}"></span>
+          <div class="info">
+            <div class="indo">${esc(w.indo)} <span class="base-tag">${baseLbl}</span></div>
+            <div class="rus">${esc(w.rus)}</div>
+            <div class="cat">${esc(w.cat)}</div>
+          </div>
+          <div class="row-actions">
+            <div class="seg">
+              ${["learning", "review", "known"]
+                .map(
+                  (s) =>
+                    `<button data-set="${s}" class="${
+                      w.status === s ? "on " + s : ""
+                    }">${statusLabel(s)}</button>`
+                )
+                .join("")}
+            </div>
+            <div class="row-icons"><button class="mini" data-speak title="${t("ttl_speak")}">🔊</button></div>
+          </div>
+        </div>`;
+        })
+        .join("");
+      resultsEl.querySelectorAll(".word-row").forEach((rowEl) => {
+        const w = shown[+rowEl.dataset.idx];
+        rowEl.querySelectorAll("[data-set]").forEach((b) =>
+          b.addEventListener("click", () => {
+            if (w.base === "mine") Store.setStatus(w.id, b.dataset.set);
+            else Store.dictSetStatus(w.id, b.dataset.set);
+            renderStats();
+            renderCounts();
+            renderResults();
+          })
+        );
+        const sp = rowEl.querySelector("[data-speak]");
+        if (sp) sp.addEventListener("click", () => speak(w.indo));
+      });
+    }
+
+    input.addEventListener("input", renderResults);
+    renderCounts();
+    renderResults();
+    input.focus();
   }
 
   // ---------- Вход / регистрация ----------
