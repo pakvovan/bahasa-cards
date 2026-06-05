@@ -141,18 +141,16 @@ const Store = (() => {
     };
   }
 
+  const T = (k) => (window.t ? window.t(k) : k);
+
   function translateAuthError(err) {
-    const m = (err && err.message) || "Ошибка";
-    if (/invalid login credentials/i.test(m)) return "Неверный email или пароль";
-    if (/already registered|already exists/i.test(m))
-      return "Этот email уже зарегистрирован — войди";
-    if (/password should be at least/i.test(m))
-      return "Пароль слишком короткий (минимум 6 символов)";
-    if (/unable to validate email|invalid email/i.test(m))
-      return "Похоже, email введён неверно";
-    if (/rate limit|too many/i.test(m)) return "Слишком много попыток, подожди немного";
-    if (/failed to fetch|networkerror|load failed/i.test(m))
-      return "Нет связи с сервером — проверь интернет";
+    const m = (err && err.message) || "Error";
+    if (/invalid login credentials/i.test(m)) return T("err_authInvalid");
+    if (/already registered|already exists/i.test(m)) return T("err_authExists");
+    if (/password should be at least/i.test(m)) return T("err_authShort");
+    if (/unable to validate email|invalid email/i.test(m)) return T("err_authEmail");
+    if (/rate limit|too many/i.test(m)) return T("err_authRate");
+    if (/failed to fetch|networkerror|load failed/i.test(m)) return T("err_noServer");
     return m;
   }
 
@@ -324,9 +322,9 @@ const Store = (() => {
     async add({ indo, rus, cat }) {
       indo = (indo || "").trim();
       rus = (rus || "").trim();
-      if (!indo || !rus) return { ok: false, error: "Заполни слово и перевод" };
+      if (!indo || !rus) return { ok: false, error: T("err_fillWord") };
       if (words.find((w) => w.indo.toLowerCase() === indo.toLowerCase()))
-        return { ok: false, error: "Такое слово уже есть" };
+        return { ok: false, error: T("err_dupWord") };
       const row = {
         user_id: user.id,
         indo,
@@ -344,8 +342,8 @@ const Store = (() => {
         return {
           ok: false,
           error: /fetch|network/i.test(error.message || "")
-            ? "Добавление новых слов недоступно офлайн"
-            : "Ошибка сохранения: " + error.message,
+            ? T("err_addOffline")
+            : T("err_save") + ": " + error.message,
         };
       const w = rowToWord(data);
       words.unshift(w);
@@ -376,7 +374,7 @@ const Store = (() => {
       if (!w) return { ok: false };
       const indo = fields.indo !== undefined ? fields.indo.trim() : w.indo;
       const rus = fields.rus !== undefined ? fields.rus.trim() : w.rus;
-      if (!indo || !rus) return { ok: false, error: "Пусто" };
+      if (!indo || !rus) return { ok: false, error: T("err_empty") };
       w.indo = indo;
       w.rus = rus;
       notifyWords();
@@ -412,9 +410,9 @@ const Store = (() => {
     // Обратная связь
     async sendFeedback(message) {
       message = (message || "").trim();
-      if (!message) return { ok: false, error: "Напиши сообщение" };
+      if (!message) return { ok: false, error: T("err_fbEmpty") };
       if (message.length > 4000)
-        return { ok: false, error: "Слишком длинно (макс. 4000 символов)" };
+        return { ok: false, error: T("err_fbLong") };
       const row = {
         user_id: user ? user.id : null,
         email: user ? user.email : null,
@@ -425,7 +423,7 @@ const Store = (() => {
         return {
           ok: false,
           error: /fetch|network/i.test(error.message || "")
-            ? "Нет интернета — попробуй позже"
+            ? T("err_noNet")
             : error.message,
         };
       return { ok: true };

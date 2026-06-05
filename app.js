@@ -1,27 +1,29 @@
-/* UI приложения карточек. Чистый JS, без сборки. */
+/* UI приложения карточек. Чистый JS, без сборки. Локализация через window.t(). */
 (() => {
   const S = Store.STATUS;
+  const t = window.t;
+  const getUiLang = window.getUiLang;
+  const setUiLang = window.setUiLang;
   const root = document.getElementById("view");
   const tabsEl = document.getElementById("tabs");
   const statsEl = document.getElementById("stats");
 
-  // Состояние UI (не сохраняется, кроме активной вкладки)
   const ui = {
-    tab: "study",        // study | list | add
-    authMode: "login",   // login | register
-    base: "mine",        // mine (моя база) | ready (готовая база)
-    deck: "learning",    // какую корзину учим
-    studyCat: "all",     // фильтр темы в режиме учёбы
-    reverse: localStorage.getItem("bahasa_reverse") === "1", // показывать русский первым
+    tab: "study",
+    authMode: "login",
+    base: "mine",
+    deck: "learning",
+    studyCat: "all",
+    reverse: localStorage.getItem("bahasa_reverse") === "1",
     flipped: false,
-    queue: [],           // очередь id для изучения
+    queue: [],
     qIndex: 0,
     search: "",
     filterStatus: "all",
-    listCat: "all",      // фильтр темы в списке
+    listCat: "all",
   };
 
-  // --- активная база: маршрутизируем чтение/запись ---
+  // --- активная база ---
   const isReady = () => ui.base === "ready";
   const curAll = () => (isReady() ? Store.dictAll() : Store.all());
   const curByStatus = (s) => (isReady() ? Store.dictByStatus(s) : Store.byStatus(s));
@@ -34,7 +36,9 @@
   const curEdit = (id, fields) =>
     isReady() ? Store.dictEdit(id, fields) : Store.update(id, fields);
 
-  // Озвучка слова на бахаса через браузерный синтез речи
+  const statusLabel = (s) => t("st_" + s);
+
+  // Озвучка
   let _voices = [];
   function loadVoices() {
     if (window.speechSynthesis) _voices = speechSynthesis.getVoices() || [];
@@ -54,10 +58,8 @@
     speechSynthesis.speak(u);
   }
 
-  // Копировать слово из готовой базы в свою
   async function copyToMine(indo, rus, cat) {
-    const res = await Store.add({ indo, rus, cat });
-    return res;
+    return await Store.add({ indo, rus, cat });
   }
 
   const esc = (s) =>
@@ -65,18 +67,50 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
     );
 
-  // языки перевода
+  // язык перевода (готовая база)
   const LANGS = { ru: "🇷🇺 Рус", en: "🇬🇧 Eng", uk: "🇺🇦 Укр" };
   const langFlag = { ru: "🇷🇺", en: "🇬🇧", uk: "🇺🇦" };
   function langSelectHTML() {
     const cur = Store.getLang();
-    return `<select class="lang-sel" id="langSel" title="Язык перевода">${Object.entries(
+    return `<select class="lang-sel" id="langSel" title="${t("ttl_transLang")}">${Object.entries(
       LANGS
     )
       .map(
         ([k, v]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${v}</option>`
       )
       .join("")}</select>`;
+  }
+
+  // --- переключатель ЯЗЫКА ИНТЕРФЕЙСА ---
+  function renderUiLang() {
+    const box = document.getElementById("uilangbox");
+    if (!box) return;
+    const cur = getUiLang();
+    box.innerHTML = `<select class="uilang-sel" id="uilangSel" title="${t(
+      "ttl_uiLang"
+    )}">${Object.entries(window.UI_LANGS)
+      .map(
+        ([k, v]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${v}</option>`
+      )
+      .join("")}</select>`;
+    document.getElementById("uilangSel").addEventListener("change", (e) => {
+      setUiLang(e.target.value);
+      refreshUi();
+    });
+  }
+
+  // перерисовать весь интерфейс под новый язык (без сброса позиции в колоде)
+  function refreshUi() {
+    window.applyStaticI18n();
+    renderUiLang();
+    if (Store.currentUser()) {
+      document.body.classList.remove("auth-mode");
+      renderUserbar();
+      renderStats();
+      render();
+    } else {
+      renderAuth();
+    }
   }
 
   // ---------- Переключатель базы ----------
@@ -88,15 +122,15 @@
     }
     el.innerHTML = `
       <div class="base-switch">
-        <button data-base="mine" class="${ui.base === "mine" ? "active" : ""}">📔 Моя база</button>
-        <button data-base="ready" class="${ui.base === "ready" ? "active" : ""}">📚 Готовая база</button>
+        <button data-base="mine" class="${ui.base === "mine" ? "active" : ""}">${t("base_mine")}</button>
+        <button data-base="ready" class="${ui.base === "ready" ? "active" : ""}">${t("base_ready")}</button>
       </div>`;
     el.querySelectorAll("[data-base]").forEach((b) =>
       b.addEventListener("click", async () => {
         const next = b.dataset.base;
         if (next === ui.base) return;
         if (next === "ready" && !Store.dictLoaded()) {
-          b.textContent = "Загрузка…";
+          b.textContent = t("loading");
           await Store.dictLoad();
         }
         ui.base = next;
@@ -117,13 +151,13 @@
     const c = curCounts();
     statsEl.innerHTML = `
       <div class="stat" data-deck="learning">
-        <div class="num">${c.learning}</div><div class="lbl">Учу</div>
+        <div class="num">${c.learning}</div><div class="lbl">${t("st_learning")}</div>
       </div>
       <div class="stat" data-deck="review">
-        <div class="num">${c.review}</div><div class="lbl">Повторение</div>
+        <div class="num">${c.review}</div><div class="lbl">${t("st_review")}</div>
       </div>
       <div class="stat" data-deck="known">
-        <div class="num">${c.known}</div><div class="lbl">Знаю</div>
+        <div class="num">${c.known}</div><div class="lbl">${t("st_known")}</div>
       </div>`;
     statsEl.querySelectorAll(".stat").forEach((el) =>
       el.addEventListener("click", () => {
@@ -137,10 +171,10 @@
 
   function renderTabs() {
     const tabs = [
-      ["study", "Учить"],
-      ["list", "Все слова"],
+      ["study", t("tab_study")],
+      ["list", t("tab_list")],
     ];
-    if (!isReady()) tabs.push(["add", "Добавить"]); // в готовую базу не добавляют
+    if (!isReady()) tabs.push(["add", t("tab_add")]);
     tabsEl.innerHTML = tabs
       .map(
         ([id, lbl]) =>
@@ -161,7 +195,6 @@
     let pool = ui.deck === "due" ? curDue() : curByStatus(ui.deck);
     if (ui.studyCat !== "all") pool = pool.filter((w) => w.cat === ui.studyCat);
     ui.queue = pool.map((w) => w.id);
-    // выбрана конкретная тема — идём ПО ПОРЯДКУ; «Все темы» — перемешиваем
     if (ui.studyCat === "all") {
       for (let i = ui.queue.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -179,10 +212,10 @@
 
   function renderStudy() {
     const deckLabels = {
-      due: "🔔 Сегодня",
-      learning: "Учу",
-      review: "Повторение",
-      known: "Знаю",
+      due: t("deck_due"),
+      learning: t("st_learning"),
+      review: t("st_review"),
+      known: t("st_known"),
     };
     const dc = curCounts();
     const deckPick = `
@@ -199,7 +232,7 @@
     const catFilter =
       cats.length > 1
         ? `<select class="cat-filter" id="studyCat">
-             <option value="all">📂 Все темы</option>
+             <option value="all">${t("allThemes")}</option>
              ${cats
                .map(
                  (c) =>
@@ -214,24 +247,22 @@
     const word = currentWord();
 
     if (!word) {
+      const dn = deckLabels[ui.deck];
+      let emptyMsg;
+      if (ui.studyCat !== "all") emptyMsg = t("emptyNoneTheme", dn, ui.studyCat);
+      else if (ui.deck === "learning") emptyMsg = t("emptyDone", dn);
+      else emptyMsg = t("emptyNone", dn);
       root.innerHTML =
         deckPick +
         catFilter +
         `<div class="study-empty">
            <div class="big">🎉</div>
-           <div>В корзине «${deckLabels[ui.deck]}»${
-             ui.studyCat !== "all" ? " по теме «" + esc(ui.studyCat) + "»" : ""
-           } сейчас нет карточек${
-          ui.deck === "learning" && ui.studyCat === "all"
-            ? " — всё разобрано!"
-            : "."
-        }</div>
+           <div>${esc(emptyMsg)}</div>
          </div>`;
       bindDeckPick();
       return;
     }
 
-    // Направление: какая сторона показывается первой
     const prompt = ui.reverse ? word.rus : word.indo;
     const answer = ui.reverse ? word.indo : word.rus;
     const tf = isReady() ? langFlag[Store.getLang()] || "🇷🇺" : "🔤";
@@ -243,35 +274,35 @@
       `<div class="study-bar">
          <span class="progress-line">${ui.qIndex + 1} / ${ui.queue.length}</span>
          ${isReady() ? langSelectHTML() : ""}
-         <button class="dir-toggle" id="dirToggle" title="Сменить направление">${dirLabel}</button>
+         <button class="dir-toggle" id="dirToggle" title="${t("ttl_dir")}">${dirLabel}</button>
        </div>
        <div class="flashcard ${ui.flipped ? "flipped" : ""}" id="card">
          <div class="flashcard-inner">
            <div class="face front">
              <div class="cat-badge">${esc(word.cat)}</div>
-             <button class="speak-btn" id="speakF" title="Озвучить">🔊</button>
+             <button class="speak-btn" id="speakF" title="${t("ttl_speak")}">🔊</button>
              <div class="word">${esc(prompt)}</div>
-             <div class="hint">нажми, чтобы перевернуть</div>
+             <div class="hint">${t("flipHint")}</div>
            </div>
            <div class="face back">
              <div class="cat-badge">${esc(word.cat)}${
         isReady() && word.edited ? " ✎" : ""
       }</div>
-             <button class="speak-btn" id="speakB" title="Озвучить">🔊</button>
+             <button class="speak-btn" id="speakB" title="${t("ttl_speak")}">🔊</button>
              <div class="orig">${esc(prompt)}</div>
              <div class="word">${esc(answer)}</div>
              ${
                isReady()
-                 ? `<button class="copy-mine" id="copyMine">＋ в мою базу</button>`
-                 : `<div class="hint">куда положить слово?</div>`
+                 ? `<button class="copy-mine" id="copyMine">${t("copyMine")}</button>`
+                 : `<div class="hint">${t("whereHint")}</div>`
              }
            </div>
          </div>
        </div>
        <div class="answer-row">
-         <button class="btn ans-dont" data-move="learning">Не знаю</button>
-         <button class="btn ans-review" data-move="review">Повторить</button>
-         <button class="btn ans-know" data-move="known">Знаю</button>
+         <button class="btn ans-dont" data-move="learning">${t("ans_dont")}</button>
+         <button class="btn ans-review" data-move="review">${t("ans_review")}</button>
+         <button class="btn ans-know" data-move="known">${t("ans_know")}</button>
        </div>`;
 
     document.getElementById("dirToggle").addEventListener("click", () => {
@@ -281,7 +312,6 @@
       renderStudy();
     });
 
-    // Озвучка (всегда читаем слово на бахаса = word.indo), без переворота
     ["speakF", "speakB"].forEach((bid) => {
       const b = document.getElementById(bid);
       if (b)
@@ -290,19 +320,16 @@
           speak(word.indo);
         });
     });
-    // Копировать в свою базу (готовая база)
     const cm = document.getElementById("copyMine");
     if (cm)
       cm.addEventListener("click", async (e) => {
         e.stopPropagation();
         cm.disabled = true;
         const res = await copyToMine(word.indo, word.rus, word.cat);
-        cm.textContent = res.ok ? "✓ добавлено" : res.error || "уже есть";
+        cm.textContent = res.ok ? t("added") : res.error || t("alreadyHave");
       });
 
     const cardEl = document.getElementById("card");
-
-    // Тап/клик — перевернуть. Но если это был свайп — не переворачивать.
     let swiped = false;
     cardEl.addEventListener("click", () => {
       if (swiped) {
@@ -312,7 +339,6 @@
       toggleFlip();
     });
 
-    // Свайп влево/вправо — листать карточки.
     let sx = 0,
       sy = 0;
     cardEl.addEventListener(
@@ -330,7 +356,7 @@
         const dx = e.changedTouches[0].screenX - sx;
         const dy = e.changedTouches[0].screenY - sy;
         if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
-          swiped = true; // подавляем последующий click(=переворот)
+          swiped = true;
           navigateCard(dx < 0 ? 1 : -1);
         }
       },
@@ -357,7 +383,6 @@
     card.classList.toggle("flipped", ui.flipped);
   }
 
-  // Листать карточки: delta = +1 (следующая) / -1 (предыдущая).
   function navigateCard(delta) {
     const n = ui.queue.length;
     if (!n) return;
@@ -370,11 +395,10 @@
     renderStudy();
   }
 
-  // Клавиатура на компьютере: ← → листать, пробел — перевернуть.
   function onKeydown(e) {
     if (ui.tab !== "study") return;
-    const t = e.target;
-    if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+    const tg = e.target;
+    if (tg && /^(INPUT|SELECT|TEXTAREA)$/.test(tg.tagName)) return;
     if (e.key === "ArrowRight") {
       navigateCard(1);
       e.preventDefault();
@@ -411,7 +435,7 @@
   }
 
   // ---------- List ----------
-  const LIST_CAP = 400; // максимум строк за раз (готовая база большая)
+  const LIST_CAP = 400;
   function renderList() {
     const ready = isReady();
     const cats = curCategories();
@@ -431,7 +455,7 @@
 
     const catOptions = `
       <select id="fcat">
-        <option value="all">📂 Все темы</option>
+        <option value="all">${t("allThemes")}</option>
         ${cats
           .map(
             (c) =>
@@ -444,12 +468,12 @@
 
     const toolbar = `
       <div class="toolbar">
-        <input id="search" placeholder="Поиск…" value="${esc(ui.search)}">
+        <input id="search" placeholder="${t("search_ph")}" value="${esc(ui.search)}">
         <select id="fstatus">
-          <option value="all">Все</option>
-          <option value="learning">Учу</option>
-          <option value="review">Повторение</option>
-          <option value="known">Знаю</option>
+          <option value="all">${t("filter_all")}</option>
+          <option value="learning">${t("st_learning")}</option>
+          <option value="review">${t("st_review")}</option>
+          <option value="known">${t("st_known")}</option>
         </select>
       </div>
       <div class="toolbar">
@@ -476,35 +500,35 @@
                   (s) =>
                     `<button data-set="${s}" class="${
                       w.status === s ? "on " + s : ""
-                    }">${S[s].label}</button>`
+                    }">${statusLabel(s)}</button>`
                 )
                 .join("")}
             </div>
             <div class="row-icons">
-              <button class="mini" data-speak title="Озвучить">🔊</button>
-              <button class="mini" data-edit title="Изменить перевод">✎</button>
+              <button class="mini" data-speak title="${t("ttl_speak")}">🔊</button>
+              <button class="mini" data-edit title="${t("ttl_edit")}">✎</button>
               ${
                 ready
-                  ? `<button class="mini" data-copy title="В мою базу">＋</button>`
-                  : `<button class="mini" data-del title="Удалить">✕</button>`
+                  ? `<button class="mini" data-copy title="${t("ttl_toMy")}">＋</button>`
+                  : `<button class="mini" data-del title="${t("ttl_del")}">✕</button>`
               }
             </div>
           </div>
         </div>`;
           })
           .join("")
-      : `<div class="list-empty">Ничего не найдено</div>`;
+      : `<div class="list-empty">${t("nothingFound")}</div>`;
 
     const moreNote =
       total > LIST_CAP
-        ? `<div class="list-note">Показаны первые ${LIST_CAP} из ${total}. Уточни поиск или выбери тему.</div>`
+        ? `<div class="list-note">${t("moreNote", LIST_CAP, total)}</div>`
         : "";
 
     const footer = ready
       ? ""
       : `<div class="footer-actions">
-           <button class="link-btn" id="export">Экспорт JSON</button>
-           <button class="link-btn" id="reset">Очистить мою базу</button>
+           <button class="link-btn" id="export">${t("exportJSON")}</button>
+           <button class="link-btn" id="reset">${t("clearBase")}</button>
          </div>`;
 
     root.innerHTML = toolbar + moreNote + rows + footer;
@@ -556,15 +580,15 @@
       if (ed)
         ed.addEventListener("click", () => {
           if (ready) {
-            const nr = prompt("Перевод (для тебя):", w.rus);
+            const nr = prompt(t("prompt_editTr"), w.rus);
             if (nr != null && nr.trim()) {
               curEdit(id, { rus: nr });
               renderList();
             }
           } else {
-            const ni = prompt("Слово на бахаса:", w.indo);
+            const ni = prompt(t("prompt_indo"), w.indo);
             if (ni == null) return;
-            const nr = prompt("Перевод:", w.rus);
+            const nr = prompt(t("prompt_tr"), w.rus);
             if (nr == null) return;
             Store.update(id, { indo: ni, rus: nr });
             renderList();
@@ -577,13 +601,13 @@
           cp.disabled = true;
           const res = await copyToMine(w.indo, w.rus, w.cat);
           cp.textContent = res.ok ? "✓" : "•";
-          cp.title = res.ok ? "Добавлено в мою базу" : res.error || "Уже есть";
+          cp.title = res.ok ? t("addedToMy") : res.error || t("alreadyHave");
         });
 
       const del = rowEl.querySelector("[data-del]");
       if (del)
         del.addEventListener("click", () => {
-          if (confirm("Удалить слово?")) {
+          if (confirm(t("confirm_del"))) {
             Store.remove(id);
             renderStats();
             renderList();
@@ -605,7 +629,7 @@
     const reset = document.getElementById("reset");
     if (reset)
       reset.addEventListener("click", async () => {
-        if (confirm("Удалить ВСЕ слова из моей базы? Это необратимо.")) {
+        if (confirm(t("confirm_clear"))) {
           await Store.clearAll();
           renderStats();
           render();
@@ -619,22 +643,22 @@
     root.innerHTML = `
       <div class="form-card">
         <div class="field">
-          <label>Слово на бахаса</label>
-          <input id="f-indo" placeholder="напр. Selamat" autocomplete="off">
+          <label>${t("add_word_label")}</label>
+          <input id="f-indo" placeholder="${t("add_word_ph")}" autocomplete="off">
         </div>
         <div class="field">
-          <label>Перевод</label>
-          <input id="f-rus" placeholder="напр. поздравляю / благополучный" autocomplete="off">
+          <label>${t("add_tr_label")}</label>
+          <input id="f-rus" placeholder="${t("add_tr_ph")}" autocomplete="off">
         </div>
         <div class="field">
-          <label>Категория</label>
-          <input id="f-cat" list="cats" placeholder="напр. Приветствия" autocomplete="off">
+          <label>${t("add_cat_label")}</label>
+          <input id="f-cat" list="cats" placeholder="${t("add_cat_ph")}" autocomplete="off">
           <datalist id="cats">
             ${cats.map((c) => `<option value="${esc(c)}">`).join("")}
           </datalist>
         </div>
         <div class="form-msg" id="msg"></div>
-        <button class="btn btn-primary btn-block" id="save">Добавить карточку</button>
+        <button class="btn btn-primary btn-block" id="save">${t("add_btn")}</button>
       </div>`;
 
     const indo = document.getElementById("f-indo");
@@ -646,7 +670,7 @@
       const saveBtn = document.getElementById("save");
       saveBtn.disabled = true;
       msg.className = "form-msg";
-      msg.textContent = "Сохраняю…";
+      msg.textContent = t("saving");
       const res = await Store.add({
         indo: indo.value,
         rus: rus.value,
@@ -659,7 +683,7 @@
         return;
       }
       msg.className = "form-msg ok";
-      msg.textContent = `Добавлено: ${res.word.indo} → ${res.word.rus}`;
+      msg.textContent = t("added_log", res.word.indo, res.word.rus);
       indo.value = "";
       rus.value = "";
       indo.focus();
@@ -672,7 +696,6 @@
         if (e.key === "Enter") save();
       })
     );
-
     indo.focus();
   }
 
@@ -685,14 +708,14 @@
     ov.innerHTML = `
       <div class="modal welcome-modal" role="dialog" aria-modal="true">
         <div class="welcome-emoji">🇮🇩</div>
-        <h3>Bahasa · Карточки</h3>
-        <p class="modal-lead">Учим индонезийский по карточкам.</p>
+        <h3>Bahasa · ${t("cards")}</h3>
+        <p class="modal-lead">${t("tagline")}.</p>
         <ul class="welcome-list">
-          <li><span>📱</span><div><b>Можно установить на телефон</b> — иконкой на экране, как обычное приложение.</div></li>
-          <li><span>📶</span><div><b>Работает офлайн</b> — приложение и слова сохраняются в памяти телефона, учиться можно без интернета. Если открыл без сети и база не появилась сразу — подожди пару секунд.</div></li>
-          <li><span>🔄</span><div>Отметки и прогресс <b>синхронизируются</b>, когда интернет возвращается.</div></li>
+          <li><span>📱</span><div>${t("welcome_install")}</div></li>
+          <li><span>📶</span><div>${t("welcome_offline")}</div></li>
+          <li><span>🔄</span><div>${t("welcome_sync")}</div></li>
         </ul>
-        <button class="btn btn-primary btn-block" id="welcomeOk">Принимаю</button>
+        <button class="btn btn-primary btn-block" id="welcomeOk">${t("welcome_ok")}</button>
       </div>`;
     document.body.appendChild(ov);
     document.getElementById("welcomeOk").addEventListener("click", () => {
@@ -706,8 +729,8 @@
     const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       window.navigator.standalone === true;
-    if (standalone) return; // уже установлено
-    if (localStorage.getItem("pwa_hide") === "1") return; // ранее закрыли
+    if (standalone) return;
+    if (localStorage.getItem("pwa_hide") === "1") return;
 
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
     let shown = false;
@@ -720,7 +743,7 @@
       bar.className = "install-bar";
       bar.innerHTML =
         inner +
-        `<button class="install-x" id="installX" aria-label="Закрыть">✕</button>`;
+        `<button class="install-x" id="installX" aria-label="${t("close")}">✕</button>`;
       document.body.appendChild(bar);
       document.getElementById("installX").addEventListener("click", () => {
         bar.remove();
@@ -732,8 +755,8 @@
 
     function showAndroid() {
       showBar(
-        `<span class="install-txt">📲 Установить приложение «Bahasa»</span>
-         <button class="btn btn-primary install-go" id="installGo">Установить</button>`,
+        `<span class="install-txt">${t("install_title")}</span>
+         <button class="btn btn-primary install-go" id="installGo">${t("install_btn")}</button>`,
         async (bar) => {
           const ev = window._installEvent;
           if (!ev) return;
@@ -752,54 +775,44 @@
     window.addEventListener("install-available", showAndroid);
 
     if (isIOS && !window._installEvent) {
-      // iOS не присылает событие — показываем инструкцию
       setTimeout(
-        () =>
-          showBar(
-            `<span class="install-txt">📲 Поставь иконку: в Safari нажми <b>Поделиться</b> → <b>«На экран Домой»</b></span>`
-          ),
+        () => showBar(`<span class="install-txt">${t("install_ios")}</span>`),
         1800
       );
     }
   }
 
-  // ---------- Router (приложение, когда вошёл) ----------
+  // ---------- Router ----------
   function render() {
     renderBaseSwitch();
     renderTabs();
     if (ui.tab === "study") renderStudy();
     else if (ui.tab === "list") renderList();
     else renderAdd();
-    // плавающую кнопку «+» прячем на вкладке «Добавить» и в готовой базе
     const fab = document.getElementById("fab");
     if (fab) fab.classList.toggle("hidden", ui.tab === "add" || isReady());
   }
 
-  // ---------- Экран входа / регистрации ----------
+  // ---------- Шапка пользователя ----------
   function renderUserbar() {
     const bar = document.getElementById("userbar");
     const u = Store.currentUser();
     if (u) {
       const D = window.DONATE;
-      const donateOn =
-        D && (D.url || (D.crypto && D.crypto.address));
+      const donateOn = D && (D.url || (D.crypto && D.crypto.address));
       bar.innerHTML = `
         ${
           donateOn
-            ? `<button class="userbar-btn donate-btn" id="donate" title="Поддержать проект">💛 Донат</button>`
+            ? `<button class="userbar-btn donate-btn" id="donate" title="${t("ttl_donate")}">${t("ub_donate")}</button>`
             : ""
         }
-        <button class="userbar-btn" id="feedback" title="Обратная связь">✉️ Отзыв</button>
-        <button class="logout-btn" id="logout" title="${esc(
-          u.email || ""
-        )}">Выйти</button>`;
+        <button class="userbar-btn" id="feedback" title="${t("ttl_feedback")}">${t("ub_feedback")}</button>
+        <button class="logout-btn" id="logout" title="${esc(u.email || "")}">${t("ub_logout")}</button>`;
       document.getElementById("logout").addEventListener("click", async () => {
         await Store.signOut();
         renderShell();
       });
-      document
-        .getElementById("feedback")
-        .addEventListener("click", openFeedback);
+      document.getElementById("feedback").addEventListener("click", openFeedback);
       const dn = document.getElementById("donate");
       if (dn) dn.addEventListener("click", openDonate);
     } else {
@@ -807,7 +820,7 @@
     }
   }
 
-  // ---------- Донат (модальное окно) ----------
+  // ---------- Донат ----------
   function openDonate() {
     const cfg = window.DONATE || {};
     const cr = cfg.crypto && cfg.crypto.address ? cfg.crypto : null;
@@ -818,19 +831,17 @@
     const linkBlock = cfg.url
       ? `<a class="btn btn-primary btn-block" href="${esc(
           cfg.url
-        )}" target="_blank" rel="noopener">Перейти к оплате →</a>`
+        )}" target="_blank" rel="noopener">${t("donate_pay")}</a>`
       : "";
 
     const cryptoBlock = cr
       ? `<div class="crypto-box">
-           <div class="crypto-net">${esc(cr.coin || "")} · ${esc(
-          cr.network || ""
-        )}</div>
+           <div class="crypto-net">${esc(cr.coin || "")} · ${esc(cr.network || "")}</div>
            <img class="crypto-qr" alt="QR" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data=${encodeURIComponent(
              cr.address
            )}">
            <div class="crypto-addr" id="dnAddr">${esc(cr.address)}</div>
-           <button class="btn btn-ghost btn-block" id="dnCopy">📋 Скопировать адрес</button>
+           <button class="btn btn-ghost btn-block" id="dnCopy">${t("donate_copy")}</button>
          </div>`
       : "";
 
@@ -839,12 +850,12 @@
     ov.className = "modal-overlay";
     ov.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true">
-        <h3>Поддержать проект 💛</h3>
-        <p class="modal-lead">${esc(cfg.note || "Спасибо за поддержку!")}</p>
+        <h3>${t("donate_title")}</h3>
+        <p class="modal-lead">${esc(cfg.note || t("donate_default"))}</p>
         ${linkBlock}
         ${cryptoBlock}
         <div class="modal-actions">
-          <button class="btn btn-ghost" id="dnClose">Закрыть</button>
+          <button class="btn btn-ghost" id="dnClose">${t("close")}</button>
         </div>
       </div>`;
     document.body.appendChild(ov);
@@ -859,20 +870,19 @@
       copy.addEventListener("click", async () => {
         try {
           await navigator.clipboard.writeText(cr.address);
-          copy.textContent = "✓ Скопировано";
+          copy.textContent = t("donate_copied");
         } catch (e) {
-          // запасной способ — выделить адрес
           const r = document.createRange();
           r.selectNodeContents(document.getElementById("dnAddr"));
           const s = window.getSelection();
           s.removeAllRanges();
           s.addRange(r);
-          copy.textContent = "Выдели и скопируй ⤴";
+          copy.textContent = t("donate_selectCopy");
         }
       });
   }
 
-  // ---------- Обратная связь (модальное окно) ----------
+  // ---------- Обратная связь ----------
   function openFeedback() {
     const old = document.getElementById("fbOverlay");
     if (old) old.remove();
@@ -881,13 +891,13 @@
     ov.className = "modal-overlay";
     ov.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true">
-        <h3>Обратная связь</h3>
-        <p class="modal-lead">Нашёл ошибку в переводе, есть идея или вопрос — напиши, я прочитаю.</p>
-        <textarea id="fbText" rows="5" placeholder="Твоё сообщение…"></textarea>
+        <h3>${t("fb_title")}</h3>
+        <p class="modal-lead">${t("fb_lead")}</p>
+        <textarea id="fbText" rows="5" placeholder="${t("fb_ph")}"></textarea>
         <div class="form-msg" id="fbMsg"></div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" id="fbCancel">Отмена</button>
-          <button class="btn btn-primary" id="fbSend">Отправить</button>
+          <button class="btn btn-ghost" id="fbCancel">${t("cancel")}</button>
+          <button class="btn btn-primary" id="fbSend">${t("send")}</button>
         </div>
       </div>`;
     document.body.appendChild(ov);
@@ -903,7 +913,7 @@
     send.addEventListener("click", async () => {
       send.disabled = true;
       msg.className = "form-msg";
-      msg.textContent = "Отправляю…";
+      msg.textContent = t("sending");
       const res = await Store.sendFeedback(text.value);
       if (!res.ok) {
         send.disabled = false;
@@ -912,12 +922,13 @@
         return;
       }
       msg.className = "form-msg ok";
-      msg.textContent = "Спасибо! Сообщение отправлено.";
+      msg.textContent = t("fb_thanks");
       text.value = "";
       setTimeout(close, 1200);
     });
   }
 
+  // ---------- Вход / регистрация ----------
   function renderAuth() {
     ui.authMode = ui.authMode || "login";
     const isLogin = ui.authMode === "login";
@@ -929,31 +940,27 @@
 
     root.innerHTML = `
       <div class="auth-card">
-        <h2>${isLogin ? "Вход" : "Регистрация"}</h2>
-        <p class="auth-lead">${
-          isLogin
-            ? "Войди, чтобы открыть свою базу слов."
-            : "Создай аккаунт — у тебя будет своя база слов и прогресс на любом устройстве."
-        }</p>
+        <h2>${isLogin ? t("auth_login") : t("auth_register")}</h2>
+        <p class="auth-lead">${isLogin ? t("auth_leadLogin") : t("auth_leadReg")}</p>
         <div class="field">
           <label>Email</label>
           <input id="a-email" type="email" autocomplete="email" placeholder="you@example.com">
         </div>
         <div class="field">
-          <label>Пароль</label>
+          <label>${t("auth_pass")}</label>
           <input id="a-pass" type="password" autocomplete="${
             isLogin ? "current-password" : "new-password"
-          }" placeholder="минимум 6 символов">
+          }" placeholder="${t("auth_passPh")}">
         </div>
         <div class="form-msg" id="a-msg"></div>
         <button class="btn btn-primary btn-block" id="a-submit">${
-          isLogin ? "Войти" : "Зарегистрироваться"
+          isLogin ? t("auth_loginBtn") : t("auth_regBtn")
         }</button>
         <div class="auth-switch">
           ${
             isLogin
-              ? `Нет аккаунта? <button class="link-btn" id="a-toggle">Зарегистрироваться</button>`
-              : `Уже есть аккаунт? <button class="link-btn" id="a-toggle">Войти</button>`
+              ? `${t("auth_noAcc")} <button class="link-btn" id="a-toggle">${t("auth_regBtn")}</button>`
+              : `${t("auth_haveAcc")} <button class="link-btn" id="a-toggle">${t("auth_loginBtn")}</button>`
           }
         </div>
       </div>`;
@@ -973,15 +980,13 @@
       const p = pass.value;
       if (!e || !p) {
         msg.className = "form-msg err";
-        msg.textContent = "Введи email и пароль";
+        msg.textContent = t("auth_needEmailPass");
         return;
       }
       submit.disabled = true;
       msg.className = "form-msg";
-      msg.textContent = isLogin ? "Вхожу…" : "Создаю аккаунт…";
-      const res = isLogin
-        ? await Store.signIn(e, p)
-        : await Store.signUp(e, p);
+      msg.textContent = isLogin ? t("auth_loggingIn") : t("auth_creating");
+      const res = isLogin ? await Store.signIn(e, p) : await Store.signUp(e, p);
       submit.disabled = false;
       if (!res.ok) {
         msg.className = "form-msg err";
@@ -990,12 +995,11 @@
       }
       if (res.needConfirm) {
         msg.className = "form-msg ok";
-        msg.textContent =
-          "Аккаунт создан. Подтверди email по ссылке из письма, затем войди.";
+        msg.textContent = t("auth_confirm");
         ui.authMode = "login";
         return;
       }
-      renderShell(); // вошли — показываем приложение
+      renderShell();
     }
 
     submit.addEventListener("click", go);
@@ -1027,12 +1031,12 @@
               <b>anon public key</b>.</li>
           <li>Вставь их в файл <code>app/config.js</code> и обнови страницу.</li>
         </ol>
-        <p class="auth-lead">Подробная инструкция — в <code>README.md</code>.</p>
       </div>`;
   }
 
   // ---------- Переключение экранов ----------
   function renderShell() {
+    renderUiLang();
     renderUserbar();
     if (Store.currentUser()) {
       document.body.classList.remove("auth-mode");
@@ -1046,18 +1050,17 @@
   }
 
   // ---------- Init ----------
+  window.applyStaticI18n();
   document.addEventListener("keydown", onKeydown);
   document.getElementById("fab").addEventListener("click", () => {
     ui.tab = "add";
     render();
   });
-  // если сессия истекла во время работы — вернуть на экран входа
   Store.onAuth((u) => {
     if (!u) renderShell();
   });
   setupWelcome();
   setupInstallBanner();
-  // когда интернет вернулся — досинхронизировать офлайн-изменения и обновить экран
   window.addEventListener("online", async () => {
     if (!Store.currentUser()) return;
     await Store.syncNow();
@@ -1068,7 +1071,6 @@
     } else if (ui.tab === "list") renderList();
   });
 
-  // фоновая синхронизация обновила данные — освежить счётчики (не трогая текущий экран)
   Store.subscribe(() => {
     if (Store.currentUser() && !document.body.classList.contains("auth-mode")) {
       renderStats();
