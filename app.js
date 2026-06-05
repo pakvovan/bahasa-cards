@@ -65,6 +65,20 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
     );
 
+  // языки перевода
+  const LANGS = { ru: "🇷🇺 Рус", en: "🇬🇧 Eng", uk: "🇺🇦 Укр" };
+  const langFlag = { ru: "🇷🇺", en: "🇬🇧", uk: "🇺🇦" };
+  function langSelectHTML() {
+    const cur = Store.getLang();
+    return `<select class="lang-sel" id="langSel" title="Язык перевода">${Object.entries(
+      LANGS
+    )
+      .map(
+        ([k, v]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${v}</option>`
+      )
+      .join("")}</select>`;
+  }
+
   // ---------- Переключатель базы ----------
   function renderBaseSwitch() {
     const el = document.getElementById("baseswitch");
@@ -220,13 +234,15 @@
     // Направление: какая сторона показывается первой
     const prompt = ui.reverse ? word.rus : word.indo;
     const answer = ui.reverse ? word.indo : word.rus;
-    const dirLabel = ui.reverse ? "🇷🇺 → 🇮🇩" : "🇮🇩 → 🇷🇺";
+    const tf = langFlag[Store.getLang()] || "🇷🇺";
+    const dirLabel = ui.reverse ? `${tf} → 🇮🇩` : `🇮🇩 → ${tf}`;
 
     root.innerHTML =
       deckPick +
       catFilter +
       `<div class="study-bar">
-         <span class="progress-line">${ui.qIndex + 1} / ${ui.queue.length} · ← → или свайп</span>
+         <span class="progress-line">${ui.qIndex + 1} / ${ui.queue.length}</span>
+         ${langSelectHTML()}
          <button class="dir-toggle" id="dirToggle" title="Сменить направление">${dirLabel}</button>
        </div>
        <div class="flashcard ${ui.flipped ? "flipped" : ""}" id="card">
@@ -386,6 +402,12 @@
         startDeck();
         renderStudy();
       });
+    const ls = document.getElementById("langSel");
+    if (ls)
+      ls.addEventListener("change", (e) => {
+        Store.setLang(e.target.value);
+        renderStudy();
+      });
   }
 
   // ---------- List ----------
@@ -430,7 +452,10 @@
           <option value="known">Знаю</option>
         </select>
       </div>
-      ${cats.length > 1 ? `<div class="toolbar">${catOptions}</div>` : ""}`;
+      <div class="toolbar">
+        ${cats.length > 1 ? catOptions : ""}
+        ${ready ? langSelectHTML() : ""}
+      </div>`;
 
     const rows = shown.length
       ? shown
@@ -503,6 +528,12 @@
     if (fcat)
       fcat.addEventListener("change", (e) => {
         ui.listCat = e.target.value;
+        renderList();
+      });
+    const ls = document.getElementById("langSel");
+    if (ls)
+      ls.addEventListener("change", (e) => {
+        Store.setLang(e.target.value);
         renderList();
       });
 

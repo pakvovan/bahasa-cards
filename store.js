@@ -19,8 +19,16 @@ const Store = (() => {
   let user = null;
   let words = [];
   let dictProgress = null; // {dict_id: {status,streak,due,indo,rus}}
+  let lang = localStorage.getItem("bahasa_lang") || "ru"; // язык перевода: ru | en | uk
   const wordListeners = new Set();
   const authListeners = new Set();
+
+  // перевод слова готовой базы на выбранный язык
+  function trOf(w) {
+    if (lang === "en") return w.en || w.rus;
+    if (lang === "uk") return w.uk || w.rus;
+    return w.rus;
+  }
 
   const DAY = 86400000;
 
@@ -188,6 +196,17 @@ const Store = (() => {
     STATUS,
     isDue,
     configured,
+
+    // язык перевода готовой базы
+    getLang() {
+      return lang;
+    },
+    setLang(l) {
+      lang = l;
+      try {
+        localStorage.setItem("bahasa_lang", l);
+      } catch (e) {}
+    },
 
     async init() {
       if (!configured()) return { configured: false };
@@ -451,7 +470,7 @@ const Store = (() => {
         return {
           id: w.id,
           indo: (p && p.indo) || w.indo,
-          rus: (p && p.rus) || w.rus,
+          rus: lang === "ru" && p && p.rus ? p.rus : trOf(w),
           cat: w.cat,
           status: (p && p.status) || "learning",
           due: (p && p.due) || null,
