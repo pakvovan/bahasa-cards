@@ -220,8 +220,24 @@
     },
   };
 
-  let uiLang = localStorage.getItem("bahasa_ui") || "ru";
-  if (!I18N[uiLang]) uiLang = "ru";
+  // авто-определение языка по устройству (для первого захода)
+  function detectLang() {
+    const list =
+      navigator.languages && navigator.languages.length
+        ? navigator.languages
+        : [navigator.language || "en"];
+    for (const l of list) {
+      const c = (l || "").toLowerCase();
+      if (c.startsWith("uk")) return "uk";
+      if (c.startsWith("ru")) return "ru";
+      if (c.startsWith("en")) return "en";
+    }
+    return "en"; // остальные языки — английский интерфейс по умолчанию
+  }
+
+  // если пользователь выбрал язык вручную — берём его; иначе определяем по устройству
+  let uiLang = localStorage.getItem("bahasa_ui");
+  if (!uiLang || !I18N[uiLang]) uiLang = detectLang();
 
   window.UI_LANGS = { ru: "🇷🇺 Рус", en: "🇬🇧 Eng", uk: "🇺🇦 Укр" };
 
