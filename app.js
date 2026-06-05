@@ -234,7 +234,7 @@
     // Направление: какая сторона показывается первой
     const prompt = ui.reverse ? word.rus : word.indo;
     const answer = ui.reverse ? word.indo : word.rus;
-    const tf = langFlag[Store.getLang()] || "🇷🇺";
+    const tf = isReady() ? langFlag[Store.getLang()] || "🇷🇺" : "🔤";
     const dirLabel = ui.reverse ? `${tf} → 🇮🇩` : `🇮🇩 → ${tf}`;
 
     root.innerHTML =
@@ -242,7 +242,7 @@
       catFilter +
       `<div class="study-bar">
          <span class="progress-line">${ui.qIndex + 1} / ${ui.queue.length}</span>
-         ${langSelectHTML()}
+         ${isReady() ? langSelectHTML() : ""}
          <button class="dir-toggle" id="dirToggle" title="Сменить направление">${dirLabel}</button>
        </div>
        <div class="flashcard ${ui.flipped ? "flipped" : ""}" id="card">
